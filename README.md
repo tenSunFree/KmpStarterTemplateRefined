@@ -88,6 +88,13 @@ It can serve as the server-side foundation for authentication, user management, 
 - Teacher PiP overlay with visibility toggle
 - Chat / Participants tab panel with message list and input bar
 
+### Local Pre-Push Checks
+
+- Git pre-push hook (`scripts/pre-push`) that mirrors CI checks locally before every push
+- Runs Android Lint, unit tests, and debug build via `scripts/check.sh`
+- Blocks the push automatically if lint, test, or build fails
+- One-time setup per clone: `cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push scripts/check.sh`
+
 ---
 
 ## Tech Stack
