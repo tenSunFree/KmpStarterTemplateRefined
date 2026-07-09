@@ -14,8 +14,10 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBackIos
 import androidx.compose.material.icons.filled.*
@@ -31,7 +33,17 @@ import androidx.compose.ui.unit.sp
 import com.sun.kmpstartertemplaterefined.feature_live_presentation.rtc.AgoraLocalConfig
 import com.sun.kmpstartertemplaterefined.feature_live_presentation.rtc.LiveRtcClassroomView
 import com.sun.kmpstartertemplaterefined.feature_live_presentation.rtc.LiveRtcSession
-import com.sun.kmpstartertemplaterefined.utils.logging.Log
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material.icons.filled.PictureInPictureAlt
+import androidx.datastore.preferences.core.stringPreferencesKey
+import com.sun.kmpstartertemplaterefined.ui_utils.datastore.rememberMutableDataStoreState
+import com.sun.kmpstartertemplaterefined.feature_live_presentation.pip.PipDisplayMode
+import com.sun.kmpstartertemplaterefined.ui_components.cards.SelectableListCard
+import com.sun.kmpstartertemplaterefined.ui_utils.popups.bottom_sheets.BaseBottomSheet
+import com.sun.kmpstartertemplaterefined.ui_utils.theme.Dimens
+
+private val PIP_DISPLAY_MODE_KEY = stringPreferencesKey("live_pip_display_mode")
 
 private val LivePink = Color(0xFFFF3F68)
 private val LiveBg = Color.Black
@@ -85,30 +97,28 @@ private val mockChatMessages = listOf(
  * Composable branch. This keeps remember state, the RtcEngine, and the FrameLayout
  * all as the same instance, so the view tree is not torn down and rebuilt when PiP changes.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LiveRoomScreen(
     course: LiveCourseUi,
     onBack: () -> Unit,
 ) {
-    var selectedTab by remember { mutableStateOf(LiveRoomTab.Participants) } // Default to Participants for screenshots
+    var selectedTab by remember { mutableStateOf(LiveRoomTab.Participants) }
     var showTeacherVideo by remember { mutableStateOf(true) }
     var speakerEnabled by remember { mutableStateOf(true) }
     var inputText by remember { mutableStateOf("") }
-    // Notification permission handling has already been moved to MainActivity
-    // (via Activity-level registerForActivityResult, triggered by
-    // AndroidLivePipState.onStateChanged). This screen no longer calls
-    // rememberPipNotificationPermissionGranted() or any ActivityResultLauncher-related API.
-    //
-    // Why: this screen is mounted through Navigation3's SceneSetupNavEntryDecorator
-    // (implemented internally with movableContentOf). In this path, the CompositionLocal
-    // inheritance chain (including the LocalActivityResultRegistryOwner dependency used by
-    // rememberLauncherForActivityResult) is unreliable and previously caused an
-    // IllegalStateException crash. Moving the permission request to the Activity level
-    // completely avoids this problem; see MainActivity.ensureNotificationPermission().
-    //
-    // When entering this screen, inform the platform that we are in the live room so
-    // system PiP is allowed. When leaving the screen, clear the state to avoid the user
-    // being mistakenly treated as entering PiP after leaving the live room.
+    var showPipSettingsSheet by remember { mutableStateOf(false) }
+
+    // Persisted PiP display preference, defaulting to ScreenOnly (conservative and stable, aligned with mainstream meeting apps)
+    val pipDisplayModePref = rememberMutableDataStoreState(
+        key = PIP_DISPLAY_MODE_KEY,
+        defaultValue = PipDisplayMode.ScreenOnly.name,
+    )
+    val pipDisplayMode = remember(pipDisplayModePref.value) {
+        PipDisplayMode.entries.firstOrNull { it.name == pipDisplayModePref.value }
+            ?: PipDisplayMode.ScreenOnly
+    }
+
     DisposableEffect(Unit) {
         LivePipController.setLiveRoomActive(true)
         LivePipController.setCourseTitle(course.title)
@@ -117,14 +127,7 @@ fun LiveRoomScreen(
             LivePipController.setVideoPlaying(false)
         }
     }
-    // Register the actual behavior for the PiP notification's "mute/unmute" and "stop playback" buttons.
-    // - Mute/unmute: directly flip the current speakerEnabled state. The subsequent
-    //   LaunchedEffect(speakerEnabled) (inside LiveRtcClassroomView)
-    //   will automatically handle Agora's muteAllRemoteAudioStreams.
-    // - Stop playback: equivalent to the user pressing Back to leave the live room.
-    //   It reuses the same onBack logic, which will naturally trigger the onDispose
-    //   in the DisposableEffect above and the leaveChannel/destroy cleanup inside
-    //   LiveRtcClassroomView.
+
     DisposableEffect(Unit) {
         LivePipNotificationController.registerActions(
             onToggleMuteRequested = { speakerEnabled = !speakerEnabled },
@@ -134,69 +137,143 @@ fun LiveRoomScreen(
             LivePipNotificationController.unregisterActions()
         }
     }
-    // Report the current mute state (muted = !speakerEnabled) to the notification controller
-    // every time speakerEnabled changes, so the text on the button in the currently displayed
-    // notification stays in sync with the real state—whether the change came from the in-app
-    // UI or from the notification button itself.
+
     LaunchedEffect(speakerEnabled) {
         LivePipNotificationController.reportMuteState(!speakerEnabled)
     }
-    // Whether the app is currently in system PiP mode (Android only; iOS is always false).
+
     val inPip = isInPipMode()
+
+    // Normal live view: follow the user's eye-toggle switch.
+    // PiP: show camera only when both are true: user's eye-toggle is on AND ScreenWithCameraOverlay is selected.
+    val showCameraInVideoArea = if (inPip) {
+        showTeacherVideo && pipDisplayMode == PipDisplayMode.ScreenWithCameraOverlay
+    } else {
+        showTeacherVideo
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(LiveBg)
             .then(if (inPip) Modifier else Modifier.systemBarsPadding()),
     ) {
-        // Because the PiP window is very small, hide the Header, chat, and control bar and keep only the video.
-        // Wrapping these display-only sections in if is safe—they are unrelated to video rendering, and being
-        // disposed/recreated will not affect the Agora engine or video continuity.
-        // The only part that must not be affected by an if-return is the LiveVideoArea below.
         if (!inPip) {
             LiveRoomHeader(
                 showTeacherVideo = showTeacherVideo,
                 speakerEnabled = speakerEnabled,
+                pipDisplayMode = pipDisplayMode,
                 onBack = onBack,
                 onToggleTeacherVideo = { showTeacherVideo = !showTeacherVideo },
                 onToggleSpeaker = { speakerEnabled = !speakerEnabled },
+                onOpenPipSettings = { showPipSettingsSheet = true },
             )
         }
-        // Live Stream View Area — there is only this one call site for the entire screen.
-        // In PiP mode: fill the entire PiP window and forcibly hide the teacher camera inset.
-        // (The PiP space is too small, and stacking two SurfaceViews can easily cause Z-order/
-        // black-screen issues; we also adopted the point mentioned in the analysis.)
+
         LiveVideoArea(
             course = course,
-            showTeacherVideo = if (inPip) false else showTeacherVideo,
+            showTeacherVideo = showCameraInVideoArea,
             speakerEnabled = speakerEnabled,
+            isInPip = inPip,
             modifier = if (inPip) {
                 Modifier.fillMaxSize()
             } else {
                 Modifier.fillMaxWidth().height(240.dp)
             },
         )
+
         if (!inPip) {
-            // Chat / Participants Tab column
             LiveRoomTabs(
                 selectedTab = selectedTab,
                 onTabSelected = { selectedTab = it },
             )
-            // Content Panel
-            Box(
-                modifier = Modifier.weight(1f).fillMaxWidth().background(PanelBg),
-            ) {
+            Box(modifier = Modifier.weight(1f).fillMaxWidth().background(PanelBg)) {
                 when (selectedTab) {
                     LiveRoomTab.Chat -> LiveChatPanel(messages = mockChatMessages)
                     LiveRoomTab.Participants -> LiveParticipantsPanel(participants = mockParticipants)
                 }
             }
-            // Bottom Operation Column
             LiveBottomBar(
                 selectedTab = selectedTab,
                 inputText = inputText,
                 onInputTextChange = { inputText = it },
                 onSend = { inputText = "" },
+            )
+        }
+    }
+
+    if (showPipSettingsSheet) {
+        val sheetState = rememberModalBottomSheetState(
+            skipPartiallyExpanded = true, // Must be fully expanded to avoid clipping the second card in half-expanded state
+        )
+
+        BaseBottomSheet(
+            sheetState = sheetState,
+            onDismiss = { showPipSettingsSheet = false },
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()) // Safety guard: prevents clipping if content becomes taller than expected
+                    .padding(Dimens.paddingMedium)
+                    .navigationBarsPadding(),
+            ) {
+                Text(
+                    text = "縮小畫面時的顯示方式",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "選擇進入 PiP 小視窗後，要如何顯示直播畫面。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(Dimens.paddingMedium))
+
+                PipDisplayMode.entries.forEachIndexed { index, mode ->
+                    if (index > 0) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                    PipModeOptionRow(
+                        mode = mode,
+                        isSelected = pipDisplayMode == mode,
+                        onSelect = {
+                            pipDisplayModePref.value = mode.name
+                            showPipSettingsSheet = false
+                        },
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(Dimens.paddingMedium))
+            }
+        }
+    }
+}
+
+@Composable
+private fun PipModeOptionRow(
+    mode: PipDisplayMode,
+    isSelected: Boolean,
+    onSelect: () -> Unit,
+) {
+    SelectableListCard(
+        modifier = Modifier.fillMaxWidth(),
+        isSelected = isSelected,
+        onClick = onSelect,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = mode.label,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = mode.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -206,9 +283,11 @@ fun LiveRoomScreen(
 private fun LiveRoomHeader(
     showTeacherVideo: Boolean,
     speakerEnabled: Boolean,
+    pipDisplayMode: PipDisplayMode,
     onBack: () -> Unit,
     onToggleTeacherVideo: () -> Unit,
     onToggleSpeaker: () -> Unit,
+    onOpenPipSettings: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().height(80.dp).padding(horizontal = 12.dp),
@@ -223,21 +302,9 @@ private fun LiveRoomHeader(
             )
         }
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "LumaLang",
-                color = Color.White,
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Black,
-                lineHeight = 32.sp,
-            )
-            Text(
-                text = "AI English Academy",
-                color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
+            Text(text = "LumaLang", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Black, lineHeight = 32.sp)
+            Text(text = "AI English Academy", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         }
-        // Eyes (Switch to teacher's video)
         CircleIconButton(
             onClick = onToggleTeacherVideo,
             backgroundColor = if (showTeacherVideo) Color.White else ControlBg,
@@ -250,7 +317,19 @@ private fun LiveRoomHeader(
             )
         }
         Spacer(modifier = Modifier.width(10.dp))
-        // trumpet
+        // PiP display mode
+        CircleIconButton(
+            onClick = onOpenPipSettings,
+            backgroundColor = ControlBg,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.PictureInPictureAlt,
+                contentDescription = "縮小視窗顯示設定 (${pipDisplayMode.label})",
+                tint = Color.White,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Spacer(modifier = Modifier.width(10.dp))
         CircleIconButton(
             onClick = onToggleSpeaker,
             backgroundColor = ControlBg,
@@ -270,6 +349,7 @@ private fun LiveVideoArea(
     course: LiveCourseUi,
     showTeacherVideo: Boolean,
     speakerEnabled: Boolean,
+    isInPip: Boolean,
     modifier: Modifier = Modifier.fillMaxWidth().height(240.dp),
 ) {
     val session = remember(course.roomId) {
@@ -277,25 +357,17 @@ private fun LiveVideoArea(
             appId = AgoraLocalConfig.appId,
             token = AgoraLocalConfig.token,
             channelName = course.roomId,
-            uid = 0,  // 0 = Agora automatically assigns student UIDs
+            uid = 10000,
         )
     }
-    Log.d(
-        "LiveRoomScreen", "channel=${session.channelName}, appIdBlank=${session.appId.isBlank()}"
-    )
-    // Single Composable, single RTCEngine, dual-view
-    //
-    // This is the only LiveRtcClassroomView call site in the entire file. Whether or not we are in PiP,
-    // it is the same call site, and Compose treats it as the same node.
-    // The session/rtcEngine/screenContainer/cameraContainer all stay intact,
-    // and are not disposed and rebuilt when PiP changes.
     LiveRtcClassroomView(
         modifier = modifier.background(Color.Black),
         session = session,
-        screenUid = TEACHER_SCREEN_UID,   // 2000
-        cameraUid = TEACHER_CAMERA_UID,   // 1000
+        screenUid = TEACHER_SCREEN_UID,
+        cameraUid = TEACHER_CAMERA_UID,
         showCamera = showTeacherVideo,
         speakerEnabled = speakerEnabled,
+        isInPip = isInPip,
     )
 }
 

@@ -24,4 +24,5 @@ expect fun LiveRtcClassroomView(
     cameraUid: Int,
     showCamera: Boolean,
     speakerEnabled: Boolean,
+    isInPip: Boolean,  // Let the platform implementer know whether it is currently in the system PiP
 )

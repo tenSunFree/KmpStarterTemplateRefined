@@ -6,10 +6,12 @@ import android.os.Looper
 import android.util.Log
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import android.view.TextureView
 import android.widget.FrameLayout
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -61,6 +63,7 @@ actual fun LiveRtcClassroomView(
     cameraUid: Int,
     showCamera: Boolean,
     speakerEnabled: Boolean,
+    isInPip: Boolean,
 ) {
     val context = LocalContext.current
     // Two stable containers, created only once throughout the entire Composable lifecycle.
@@ -72,6 +75,28 @@ actual fun LiveRtcClassroomView(
             mContext = context.applicationContext
             mAppId = session.appId
             mEventHandler = object : IRtcEngineEventHandler() {
+                // Complete connection state change including reason code
+                override fun onConnectionStateChanged(state: Int, reason: Int) {
+                    Log.d(
+                        "AgoraRTC[classroom]",
+                        "連線狀態變化 state=$state reason=$reason " +
+                                "(reason=9 通常代表 token 過期/失效, reason=8=token失效)"
+                    )
+                }
+
+                // Agora will proactively notify you when your token is about to expire. If you don't implement `renewToken` here, you'll be disconnected and the error will be err=110/9.
+                override fun onTokenPrivilegeWillExpire(token: String?) {
+                    Log.w(
+                        "AgoraRTC[classroom]",
+                        "Token 即將過期！需要呼叫 renewToken 更新，目前尚未實作自動更新"
+                    )
+                }
+
+                // Confirm the timing and reason for leaving the channel, ruling out whether you were kicked out immediately after joining.
+                override fun onLeaveChannel(stats: RtcStats?) {
+                    Log.d("AgoraRTC[classroom]", "離開頻道 stats=$stats")
+                }
+
                 // Successfully joined the channel
                 override fun onJoinChannelSuccess(channel: String?, uid: Int, elapsed: Int) {
                     Log.d(
@@ -95,15 +120,12 @@ actual fun LiveRtcClassroomView(
                             forceRecreate = false,
                         )
 
-                        cameraUid -> setupRemoteView(
+                        cameraUid -> setupRemoteViewTexture(
                             uid = uid,
                             container = cameraContainer,
                             context = context,
                             engine = engine,
-                            overlay = true,
-                            label = "camera",
-                            renderMode = VideoCanvas.RENDER_MODE_HIDDEN, // Camera window can be cropped
-                            forceRecreate = false,
+                            renderMode = VideoCanvas.RENDER_MODE_HIDDEN,
                         )
                     }
                 }
@@ -180,15 +202,12 @@ actual fun LiveRtcClassroomView(
 
                         cameraUid -> {
                             if (state == Constants.REMOTE_VIDEO_STATE_DECODING) {
-                                setupRemoteView(
+                                setupRemoteViewTexture(
                                     uid = uid,
                                     container = cameraContainer,
                                     context = context,
                                     engine = engine,
-                                    overlay = true,
-                                    label = "camera",
                                     renderMode = VideoCanvas.RENDER_MODE_HIDDEN,
-                                    forceRecreate = false,
                                 )
                             }
                         }
@@ -219,16 +238,15 @@ actual fun LiveRtcClassroomView(
                             )
                         }
 
-                        cameraUid -> setupRemoteView(
-                            uid = uid,
-                            container = cameraContainer,
-                            context = context,
-                            engine = engine,
-                            overlay = true,
-                            label = "camera",
-                            renderMode = VideoCanvas.RENDER_MODE_HIDDEN,
-                            forceRecreate = false,
-                        )
+                        cameraUid -> {
+                            setupRemoteViewTexture(
+                                uid = uid,
+                                container = cameraContainer,
+                                context = context,
+                                engine = engine,
+                                renderMode = VideoCanvas.RENDER_MODE_HIDDEN,
+                            )
+                        }
                     }
                 }
 
@@ -256,13 +274,25 @@ actual fun LiveRtcClassroomView(
                 }
 
                 override fun onError(err: Int) {
-                    Log.e("AgoraRTC[classroom]", "錯誤碼 err=$err")
+                    // Print out the Chinese explanations of common error codes as well.
+                    val hint = when (err) {
+                        110 -> "Token 無效：App Certificate 已啟用但沒帶token，或token的uid/channel與join時不符，或token過期"
+                        109 -> "Token 已過期，需要 renewToken"
+                        17 -> "加入頻道被拒絕：可能已在頻道中，或 echo test 未結束"
+                        101 -> "App ID 無效"
+                        102 -> "channel name 格式不合法"
+                        else -> "查表: https://api-ref.agora.io"
+                    }
+                    Log.e("AgoraRTC[classroom]", "錯誤碼 err=$err → $hint")
                 }
             }
         }
         RtcEngine.create(config).also { engine ->
             RtcEngineHolder.engine = engine
-            Log.d("AgoraRTC[classroom]", "RtcEngine created")
+            Log.d(
+                "AgoraRTC[classroom]",
+                "RtcEngine created, SDK version=${RtcEngine.getSdkVersion()}"
+            )
         }
     }
     // UI layer: main screen + small window in the upper right corner
@@ -282,15 +312,19 @@ actual fun LiveRtcClassroomView(
             },
         )
         // Top right corner small window: Teacher's camera (uid=1000)
+        val cameraOverlayModifier = if (isInPip) {
+            Modifier.width(72.dp).height(54.dp).align(Alignment.TopEnd).padding(4.dp)
+        } else {
+            Modifier.width(120.dp).height(90.dp).align(Alignment.TopEnd)
+        }
         if (showCamera) {
             AndroidView(
-                modifier = Modifier.width(120.dp).height(90.dp).align(Alignment.TopEnd),
+                modifier = cameraOverlayModifier,
                 factory = { cameraContainer },
                 update = { container ->
                     container.post {
                         container.requestLayout()
                         container.invalidate()
-                        (container.getChildAt(0) as? SurfaceView)?.invalidate()
                     }
                 },
             )
@@ -300,6 +334,18 @@ actual fun LiveRtcClassroomView(
     DisposableEffect(session.channelName) {
         rtcEngine.enableVideo()
         rtcEngine.setDefaultAudioRoutetoSpeakerphone(true)
+        // Print all key parameters before joining to facilitate comparison with the values when the token is generated by the backend.
+        Log.d(
+            "AgoraRTC[classroom]",
+            "join前參數檢查 appIdFull=[${session.appId}] appIdLength=${session.appId.length} " +
+                    "channelName=${session.channelName} " +
+                    "uid=${session.uid} " +
+                    "tokenIsNull=${false} " +
+                    "tokenIsBlank=${session.token.isBlank()} " +
+                    "tokenLength=${session.token.length} " +
+                    "tokenPrefix=${session.token.take(10)}***" +
+                    "token=${session.token}"
+        )
         val options = ChannelMediaOptions().apply {
             clientRoleType = Constants.CLIENT_ROLE_AUDIENCE
             channelProfile = Constants.CHANNEL_PROFILE_LIVE_BROADCASTING
@@ -338,8 +384,7 @@ actual fun LiveRtcClassroomView(
         rtcEngine.muteAllRemoteAudioStreams(!speakerEnabled)
         rtcEngine.adjustPlaybackSignalVolume(if (speakerEnabled) 100 else 0)
     }
-
-    // === Fix point: proactively force a rebind when the app returns from PIP/background to the foreground ===
+    // Fix point: proactively force a rebind when the app returns from PIP/background to the foreground
     // MainActivity.onResume() calls AndroidLivePipState.notifyResumed(),
     // and this block receives that signal to perform one forceRecreate=true
     // rebind for both the screen and camera containers, ensuring the video can
@@ -360,15 +405,12 @@ actual fun LiveRtcClassroomView(
                     forceRecreate = true,
                 )
                 if (showCamera) {
-                    setupRemoteView(
+                    setupRemoteViewTexture(
                         uid = cameraUid,
                         container = cameraContainer,
                         context = context,
                         engine = engine,
-                        overlay = true,
-                        label = "camera",
                         renderMode = VideoCanvas.RENDER_MODE_HIDDEN,
-                        forceRecreate = true,
                     )
                 }
             }
@@ -474,6 +516,44 @@ private fun setupRemoteView(
         surfaceView.invalidate()
         container.requestLayout()
         container.invalidate()
+    }
+
+    mainHandler.post {
+        if (container.isAttachedToWindow) {
+            bindVideo()
+        } else {
+            container.doOnAttach { bindVideo() }
+        }
+    }
+}
+
+// The camera viewport uses TextureView instead: TextureView uses normal view layer compositing (GPU texture),
+// unlike SurfaceView, which is an independent hardware layer, when stacked with the main screen's SurfaceView,
+// it won't compete for Z-order, and it can display stably even in the extremely small virtual display of the system PiP, which is scaled as a whole.
+//
+// Just like the original SurfaceView, manually create a new TextureView(context),
+// Don't use RtcEngine's helper, because the API differs slightly between different Agora SDK versions; manually creating it is the safest approach.
+private fun setupRemoteViewTexture(
+    uid: Int,
+    container: FrameLayout,
+    context: Context,
+    engine: RtcEngine,
+    renderMode: Int,
+) {
+    fun bindVideo() {
+        container.removeAllViews()
+        val textureView = TextureView(context).apply {
+            keepScreenOn = true
+        }
+        container.addView(
+            textureView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+        engine.setupRemoteVideo(VideoCanvas(textureView, renderMode, uid))
+        Log.d("AgoraRTC[classroom]", "bind TextureView uid=$uid")
     }
 
     mainHandler.post {

@@ -49,6 +49,17 @@ val fakeLiveCourses = listOf(
         scheduledTime = "預計2026/05/04 20:00 開始直播",
         emoji = "👨🏻",
     ),
+    LiveCourseUi(
+        id = "course_003",
+        roomId = "ch_202679_11929_807533",
+        teacherName = "Sun",
+        title = "Sun test",
+        category = "Sun",
+        level = "B1",
+        isRequired = true,
+        scheduledTime = "Sun",
+        emoji = "👨🏻",
+    ),
 )
 
 // onOpenLiveRoom: Upload the course when you click "Enter Live Stream".

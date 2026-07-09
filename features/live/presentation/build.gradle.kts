@@ -73,6 +73,8 @@ kotlin {
                 implementation(libs.kotlin.stdlib)
                 implementation(projects.starter.utils)
                 implementation(projects.features.navigation)
+                implementation(projects.starter.ui.utils)
+                implementation(projects.starter.ui.components)
             }
         }
 

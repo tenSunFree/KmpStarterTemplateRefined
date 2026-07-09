@@ -16,6 +16,7 @@ actual fun LiveRtcClassroomView(
     cameraUid: Int,
     showCamera: Boolean,
     speakerEnabled: Boolean,
+    isInPip: Boolean,  // Currently, iOS does not have PiP integration; just accept the parameters for now and maintain no-op functionality.
 ) {
     Box(
         modifier = modifier.background(Color.Black),
