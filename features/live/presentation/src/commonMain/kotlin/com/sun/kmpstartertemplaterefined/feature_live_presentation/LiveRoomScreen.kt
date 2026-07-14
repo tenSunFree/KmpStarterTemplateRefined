@@ -119,6 +119,19 @@ fun LiveRoomScreen(
             ?: PipDisplayMode.ScreenOnly
     }
 
+    // Unified exit point: Whether it's returning from within the app or clicking "End Viewing" in a PiP notification,
+    // this path must be used to immediately synchronize the state (without waiting for the asynchronous dispose of Compose).
+    // Note: This does not replace the cleanup in onDispose, but rather adds an extra layer of "immediate effect" protection.
+    // Repeatedly calling setLiveRoomActive(false) on both sides is a safe idempotent operation.
+    val exitLiveRoom = remember {
+        {
+            LivePipNotificationController.unregisterActions()
+            LivePipController.setLiveRoomActive(false)
+            LivePipController.setVideoPlaying(false)
+            onBack()
+        }
+    }
+
     DisposableEffect(Unit) {
         LivePipController.setLiveRoomActive(true)
         LivePipController.setCourseTitle(course.title)
@@ -131,7 +144,7 @@ fun LiveRoomScreen(
     DisposableEffect(Unit) {
         LivePipNotificationController.registerActions(
             onToggleMuteRequested = { speakerEnabled = !speakerEnabled },
-            onStopRequested = onBack,
+            onStopRequested = exitLiveRoom, // Originally it was onBack, changed to exitLiveRoom
         )
         onDispose {
             LivePipNotificationController.unregisterActions()
@@ -163,7 +176,7 @@ fun LiveRoomScreen(
                 showTeacherVideo = showTeacherVideo,
                 speakerEnabled = speakerEnabled,
                 pipDisplayMode = pipDisplayMode,
-                onBack = onBack,
+                onBack = exitLiveRoom, // Originally onBack
                 onToggleTeacherVideo = { showTeacherVideo = !showTeacherVideo },
                 onToggleSpeaker = { speakerEnabled = !speakerEnabled },
                 onOpenPipSettings = { showPipSettingsSheet = true },
@@ -302,8 +315,19 @@ private fun LiveRoomHeader(
             )
         }
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = "LumaLang", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Black, lineHeight = 32.sp)
-            Text(text = "AI English Academy", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                text = "LumaLang",
+                color = Color.White,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Black,
+                lineHeight = 32.sp
+            )
+            Text(
+                text = "AI English Academy",
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
         }
         CircleIconButton(
             onClick = onToggleTeacherVideo,

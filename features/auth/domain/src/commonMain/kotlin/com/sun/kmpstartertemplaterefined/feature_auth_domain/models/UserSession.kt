@@ -8,11 +8,11 @@ data class UserSession(
     val username: String,
     val fullName: String,
     val email: String,
-    val phone: String? = null,
-    val gender: String? = null,
+    val phone: String,
+    val gender: String,
     val roleId: Int,
     val token: String,
     val refreshToken: String,
     val createdAt: String,
-    val updatedAt: String,
+    val updatedAt: String?,  // This field is explicitly allowed to be empty; it is semantically defined as optional.
 )

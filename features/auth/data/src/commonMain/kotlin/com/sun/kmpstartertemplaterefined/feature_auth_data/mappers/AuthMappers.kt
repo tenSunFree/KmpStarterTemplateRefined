@@ -3,6 +3,7 @@ package com.sun.kmpstartertemplaterefined.feature_auth_data.mappers
 import com.sun.kmpstartertemplaterefined.feature_auth_data.remote.dto.LoginDataDto
 import com.sun.kmpstartertemplaterefined.feature_auth_data.remote.dto.RegisterRequestDto
 import com.sun.kmpstartertemplaterefined.feature_auth_data.remote.dto.RegisterResponseDto
+import com.sun.kmpstartertemplaterefined.feature_auth_domain.exception.InvalidLoginResponseException
 import com.sun.kmpstartertemplaterefined.feature_auth_domain.models.LoginResult
 import com.sun.kmpstartertemplaterefined.feature_auth_domain.models.RegisterParams
 import com.sun.kmpstartertemplaterefined.feature_auth_domain.models.RegisterResult
@@ -30,25 +31,51 @@ fun RegisterResponseDto.toDomain(): RegisterResult {
     )
 }
 
-fun LoginDataDto.toDomain() = LoginResult(
-    userId = id,
-    username = username,
-    fullName = fullName,
-    email = email,
-    token = token,
-    refreshToken = refreshToken,
-)
+// reuse toUserSession() directly in toDomain() to avoid writing the validation logic twice.
+fun LoginDataDto.toDomain(): LoginResult {
+    val session = this.toUserSession()
+    return LoginResult(
+        userId = session.id,
+        username = session.username,
+        email = session.email,
+        token = session.token,
+        refreshToken = session.refreshToken,
+        fullName = session.fullName
+    )
+}
 
-fun LoginDataDto.toUserSession() = UserSession(
-    id = id,
-    username = username,
-    fullName = fullName,
-    email = email,
-    phone = phone,
-    gender = gender,
-    roleId = roleId,
-    token = token,
-    refreshToken = refreshToken,
-    createdAt = createdAt,
-    updatedAt = updatedAt,
-)
+fun LoginDataDto.toUserSession(): UserSession {
+    val validId = requireField(id, "id")
+    val validToken = requireField(token, "token")
+    val validRefreshToken = requireField(refreshToken, "refresh_token")
+
+    return UserSession(
+        id = validId,
+        username = username.orEmpty(),
+        fullName = fullName.orEmpty(),
+        email = email.orEmpty(),
+        phone = phone.orEmpty(),
+        gender = gender.orEmpty(),
+        roleId = roleId ?: 0,
+        token = validToken,
+        refreshToken = validRefreshToken,
+        createdAt = createdAt.orEmpty(),
+        updatedAt = updatedAt,
+    )
+}
+
+private fun requireField(value: String?, fieldName: String): String {
+    if (value.isNullOrBlank()) {
+        throw InvalidLoginResponseException("登入回應缺少必要欄位：$fieldName")
+    }
+    return value
+}
+
+private fun requireNotBlank(value: String?, fieldName: String): String {
+    if (value.isNullOrBlank()) {
+        throw InvalidLoginResponseException(
+            "登入回應缺少必要欄位:$fieldName"
+        )
+    }
+    return value
+}

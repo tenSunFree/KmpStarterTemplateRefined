@@ -152,7 +152,11 @@ object LivePipNotificationManager {
             // on implicit interaction where the user figures out that clicking the notification body works.
             .addAction(0, "返回直播", contentPendingIntent)
             .addAction(muteActionIcon, muteActionLabel, toggleMutePendingIntent)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "停止播放", stopPendingIntent)
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "結束觀看",
+                stopPendingIntent,
+            )
             .build()
     }
 }

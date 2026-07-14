@@ -19,12 +19,15 @@ class AuthSessionChecker(
             val response = remoteDataSource.refreshToken(
                 RefreshTokenRequestDto(refreshToken = session.refreshToken)
             )
-            if (!response.status) error("refresh failed")
+            if (response.status != true) error("refresh failed")
             val data = response.data ?: error("no data")
+            val newToken = data.token?.takeIf { it.isNotBlank() } ?: error("missing token")
+            val newRefreshToken =
+                data.refreshToken?.takeIf { it.isNotBlank() } ?: error("missing refresh_token")
             // Only the token pair is updated; user information remains unchanged.
             sessionStorage.updateTokens(
-                token = data.token,
-                refreshToken = data.refreshToken,
+                token = newToken,
+                refreshToken = newRefreshToken,
             )
         }.isSuccess
     }
