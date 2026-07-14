@@ -281,4 +281,13 @@ class MainActivity : ComponentActivity() {
         hasRequestedNotificationPermission = true
         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        LiveBackgroundAudioService.stop(applicationContext)
+        LivePipNotificationManager.cancel(applicationContext)
+        AndroidLivePipState.onStateChanged = null
+        AndroidLivePipState.onResumed = null
+        AndroidLivePipNotificationBridge.onMutedStateChanged = null
+    }
 }

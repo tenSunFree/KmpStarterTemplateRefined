@@ -367,13 +367,23 @@ actual fun LiveRtcClassroomView(
         rtcEngine.muteAllRemoteAudioStreams(!speakerEnabled)
         rtcEngine.adjustPlaybackSignalVolume(if (speakerEnabled) 100 else 0)
         onDispose {
-            // Clear all binding tags before leaving to avoid residue.
             screenContainer.removeAllViews()
             screenContainer.tag = null
             cameraContainer.removeAllViews()
             cameraContainer.tag = null
-            rtcEngine.leaveChannel()
-            RtcEngine.destroy()
+
+            runCatching {
+                rtcEngine.leaveChannel()
+            }.onFailure {
+                Log.e("AgoraRTC[classroom]", "leaveChannel failed", it)
+            }
+
+            runCatching {
+                RtcEngine.destroy()
+            }.onFailure {
+                Log.e("AgoraRTC[classroom]", "RtcEngine.destroy failed", it)
+            }
+
             RtcEngineHolder.engine = null
             AndroidLivePipState.setVideoPlaying(false)
             Log.d("AgoraRTC[classroom]", "engine destroyed")

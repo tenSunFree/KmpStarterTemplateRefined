@@ -9,6 +9,7 @@ import com.sun.kmpstartertemplaterefined.feature_auth_data.remote.dto.LoginReque
 import com.sun.kmpstartertemplaterefined.feature_auth_data.remote.dto.RefreshTokenRequestDto
 import com.sun.kmpstartertemplaterefined.feature_auth_data.remote.dto.SendOtpRequestDto
 import com.sun.kmpstartertemplaterefined.feature_auth_data.remote.dto.VerifyOtpRequestDto
+import com.sun.kmpstartertemplaterefined.feature_auth_domain.exception.InvalidLoginResponseException
 import com.sun.kmpstartertemplaterefined.feature_auth_domain.models.LoginParams
 import com.sun.kmpstartertemplaterefined.feature_auth_domain.models.LoginResult
 import com.sun.kmpstartertemplaterefined.feature_auth_domain.models.RegisterParams
@@ -27,15 +28,18 @@ class AuthRepositoryImpl(
             val response = remoteDataSource.login(
                 LoginRequestDto(email = params.email, password = params.password)
             )
-            if (!response.status) {
-                Result.failure(Exception(response.message.ifBlank { "登入失敗" }))
+            if (response.status != true) {
+                Result.failure(Exception(response.message.orEmpty().ifBlank { "登入失敗" }))
             } else {
                 val data = response.data
-                    ?: return Result.failure(Exception("伺服器未回傳登入資料"))
-                // Store the complete UserSession in SecureStorage
-                sessionStorage.saveSession(data.toUserSession())
+                    ?: return Result.failure(InvalidLoginResponseException("伺服器未回傳登入資料"))
+
+                val session = data.toUserSession()
+                sessionStorage.saveSession(session)
                 Result.success(data.toDomain())
             }
+        } catch (e: InvalidLoginResponseException) {
+            Result.failure(e)
         } catch (e: ClientRequestException) {
             val message = when (e.response.status.value) {
                 400 -> "請求格式錯誤"
@@ -58,10 +62,9 @@ class AuthRepositoryImpl(
         val response = remoteDataSource.refreshToken(
             RefreshTokenRequestDto(refreshToken = old.refreshToken)
         )
-        if (!response.status) error(response.message.ifBlank { "Token 刷新失敗" })
+        if (response.status != true) error(response.message.orEmpty().ifBlank { "Token 刷新失敗" })
         val data = response.data ?: error("刷新回傳無資料")
-        val newSession = data.toUserSession()
-        // Only update the token pair, keep other user information unchanged.
+        val newSession = data.toUserSession()   // toUserSession() 里已经验证过 token/refreshToken 非空
         sessionStorage.updateTokens(
             token = newSession.token,
             refreshToken = newSession.refreshToken,
