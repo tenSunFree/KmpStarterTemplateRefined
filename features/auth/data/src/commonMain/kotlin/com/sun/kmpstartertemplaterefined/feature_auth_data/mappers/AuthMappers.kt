@@ -70,12 +70,3 @@ private fun requireField(value: String?, fieldName: String): String {
     }
     return value
 }
-
-private fun requireNotBlank(value: String?, fieldName: String): String {
-    if (value.isNullOrBlank()) {
-        throw InvalidLoginResponseException(
-            "登入回應缺少必要欄位:$fieldName"
-        )
-    }
-    return value
-}

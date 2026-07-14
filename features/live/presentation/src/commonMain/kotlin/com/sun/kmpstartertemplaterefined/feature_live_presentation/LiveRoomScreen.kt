@@ -123,7 +123,7 @@ fun LiveRoomScreen(
     // this path must be used to immediately synchronize the state (without waiting for the asynchronous dispose of Compose).
     // Note: This does not replace the cleanup in onDispose, but rather adds an extra layer of "immediate effect" protection.
     // Repeatedly calling setLiveRoomActive(false) on both sides is a safe idempotent operation.
-    val exitLiveRoom = remember {
+    val exitLiveRoom = remember(onBack) {
         {
             LivePipNotificationController.unregisterActions()
             LivePipController.setLiveRoomActive(false)
