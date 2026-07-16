@@ -288,7 +288,7 @@ actual fun LiveRtcClassroomView(
             }
         }
         RtcEngine.create(config).also { engine ->
-            RtcEngineHolder.engine = engine
+            RtcEngineHolder.setEngine(engine)
             Log.d(
                 "AgoraRTC[classroom]",
                 "RtcEngine created, SDK version=${RtcEngine.getSdkVersion()}"
@@ -372,21 +372,7 @@ actual fun LiveRtcClassroomView(
             cameraContainer.removeAllViews()
             cameraContainer.tag = null
 
-            runCatching {
-                rtcEngine.leaveChannel()
-            }.onFailure {
-                Log.e("AgoraRTC[classroom]", "leaveChannel failed", it)
-            }
-
-            runCatching {
-                RtcEngine.destroy()
-            }.onFailure {
-                Log.e("AgoraRTC[classroom]", "RtcEngine.destroy failed", it)
-            }
-
-            RtcEngineHolder.engine = null
-            AndroidLivePipState.setVideoPlaying(false)
-            Log.d("AgoraRTC[classroom]", "engine destroyed")
+            RtcEngineHolder.releaseCurrentSession(reason = "LiveRtcClassroomView.onDispose")
         }
     }
     // The speaker switch takes effect immediately
@@ -575,12 +561,47 @@ private fun setupRemoteViewTexture(
     }
 }
 
-// Single engine owner
-//
-// It used to be internal, but LiveBackgroundAudioService (located in the androidApp module)
-// needs to call muteLocalVideoStream/muteAllRemoteVideoStreams in the background to save bandwidth,
-// so it must be accessible from outside the module to the same engine instance and was changed to public.
-// If you do not plan to implement "foreground-service-only audio background playback," you can keep it internal.
 object RtcEngineHolder {
+    @Volatile
     var engine: RtcEngine? = null
+        private set
+
+    fun setEngine(newEngine: RtcEngine) {
+        engine = newEngine
+    }
+
+    /**
+     * Centralized entry point for "Immediately Release the Current Live Session".
+     * This method is called for all three exit paths (system PiP X / in-app return / notification to end viewing).
+     * No longer writing separate `runCatching{ leaveChannel(); destroy() }` calls, avoiding logic fragmentation.
+     * It is independent of whether Compose is running; calling it even when the Activity is in the background guarantees immediate effect.
+     */
+    @Synchronized
+    fun releaseCurrentSession(reason: String) {
+        val currentEngine = engine
+        if (currentEngine == null) {
+            Log.d(
+                "AgoraRTC[classroom]",
+                "releaseCurrentSession skipped, engine is null. reason=$reason"
+            )
+            AndroidLivePipState.setVideoPlaying(false)
+            return
+        }
+        Log.d("AgoraRTC[classroom]", "releaseCurrentSession start. reason=$reason")
+        runCatching {
+            currentEngine.muteAllRemoteAudioStreams(true)
+            currentEngine.muteAllRemoteVideoStreams(true)
+            currentEngine.leaveChannel()
+        }.onFailure {
+            Log.e("AgoraRTC[classroom]", "leaveChannel failed. reason=$reason", it)
+        }
+        runCatching {
+            RtcEngine.destroy()
+        }.onFailure {
+            Log.e("AgoraRTC[classroom]", "RtcEngine.destroy failed. reason=$reason", it)
+        }
+        engine = null
+        AndroidLivePipState.setVideoPlaying(false)
+        Log.d("AgoraRTC[classroom]", "releaseCurrentSession done. reason=$reason")
+    }
 }

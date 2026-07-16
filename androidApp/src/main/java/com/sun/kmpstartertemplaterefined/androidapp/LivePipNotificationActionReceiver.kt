@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.sun.kmpstartertemplaterefined.feature_live_presentation.pip.AndroidLivePipNotificationBridge
+import com.sun.kmpstartertemplaterefined.feature_live_presentation.rtc.RtcEngineHolder
 
 /**
  * Receives broadcasts triggered by the "mute/unmute" and "stop playback" buttons on the PiP notification.
@@ -55,14 +56,11 @@ class LivePipNotificationActionReceiver : BroadcastReceiver() {
     }
 
     private fun handleStop(context: Context) {
-        // Immediately dismiss the notification without waiting for Compose to finish processing—the user
-        // should immediately feel that the action has taken effect after clicking "stop playback."
         LivePipNotificationManager.cancel(context)
-        // Notify the Compose side to leave the live room (equivalent to the user pressing Back),
-        // which will also trigger existing cleanup logic such as leaveChannel()/RtcEngine.destroy().
+        // To maintain consistency with the system PiP X: do not wait for bring-to-front before disposing of the compose,
+        // Release it directly here to ensure that the sound stops immediately when "End Viewing" is pressed.
+        RtcEngineHolder.releaseCurrentSession(reason = "PiP notification stop action")
         AndroidLivePipNotificationBridge.notifyStopRequested()
-        // Bring MainActivity back to the foreground: after stopping playback, the PiP window should not
-        // remain on a small window that no longer has real video content.
         val bringToFrontIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
         }

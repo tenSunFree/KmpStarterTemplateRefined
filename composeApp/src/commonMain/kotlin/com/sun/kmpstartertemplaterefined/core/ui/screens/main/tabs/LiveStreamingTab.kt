@@ -51,7 +51,7 @@ val fakeLiveCourses = listOf(
     ),
     LiveCourseUi(
         id = "course_003",
-        roomId = "ch_2026710_201133_455387",
+        roomId = "ch_2026716_8172_519759",
         teacherName = "Sun",
         title = "Sun test",
         category = "Sun",
