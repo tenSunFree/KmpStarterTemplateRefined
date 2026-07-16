@@ -6,6 +6,8 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.addCallback
@@ -24,8 +26,29 @@ import com.sun.kmpstartertemplaterefined.App
 import com.sun.kmpstartertemplaterefined.feature_live_presentation.background.AndroidLiveBackgroundPlaybackBridge
 import com.sun.kmpstartertemplaterefined.feature_live_presentation.pip.AndroidLivePipNotificationBridge
 import com.sun.kmpstartertemplaterefined.feature_live_presentation.pip.AndroidLivePipState
+import com.sun.kmpstartertemplaterefined.feature_live_presentation.rtc.RtcEngineHolder
+import com.sun.kmpstartertemplaterefined.utils.logging.Log
 
 class MainActivity : ComponentActivity() {
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    /** Whether the system PiP has actually been accessed. Only if the PiP has been accessed can subsequent `onStop / PiP false` represent "System X is shut down". */
+    private var hasEnteredPipOnce = false
+
+    /**
+     * A temporary flag indicating when PiP changes from true to false. False may represent:
+     * 1. The user taps the PiP window to return to the main app screen (should not exit)
+     * 2. The user taps the system's native X to close PiP (should exit)
+     * This cannot be determined immediately upon reaching false; confirmation must be waited for onResume or onStop.
+     */
+    private var pendingSystemPipDismiss = false
+
+    /** true = onResume has been run; the Activity is indeed currently in the foreground. */
+    private var isActivityResumed = false
+
+    /** Prevents delayed checks in onStop and onPictureInPictureModeChanged from triggering the same exit twice. */
+    private var hasHandledPipDismiss = false
 
     /**
      * Crash fix: request notification permission here, not inside any Composable
@@ -149,22 +172,34 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * Black screen fix
-     * This is triggered every time the Activity truly returns to the foreground (including restoring from PiP,
-     * returning from the background via the floating notification/recent tasks, and every resume after first launch).
-     *
-     * Here we proactively notify the current screen: the Surface behind the SurfaceView may already have been
-     * recreated by the system, so the Agora engine must call setupRemoteVideo() again. Otherwise the screen can
-     * get stuck on black even though new video frames are continuing to arrive in the background.
-     *
-     * Note: this only "notifies"; the real re-binding logic lives in the DisposableEffect inside
-     * LiveRtcClassroomView (see LiveRtcVideoView.android.kt in features/live/presentation),
-     * keeping the layering principle that the app module does not contain feature logic.
-     */
     override fun onResume() {
         super.onResume()
+        isActivityResumed = true
+        // If this onResume was caused by "expanding the PiP window back to the main screen", it means it was not closed by X, so the pending check is cancelled.
+        pendingSystemPipDismiss = false
         AndroidLivePipState.notifyResumed()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        isActivityResumed = false
+    }
+
+    /**
+     * Triggered when the Activity is completely invisible (including cases where it is closed by the system's native PiP via X).
+     * This is the most direct and reliable point in time to determine if "System X closed the PiP," without needing to guess based on delays.
+     * Because once it reaches this point, it means the Activity has definitely not been brought back to the foreground.
+     */
+    override fun onStop() {
+        super.onStop()
+        val closedBySystemX =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                    hasEnteredPipOnce &&
+                    !isInPictureInPictureMode &&
+                    AndroidLivePipState.canEnterPip()
+        if (pendingSystemPipDismiss || closedBySystemX) {
+            handleSystemPipDismiss(reason = "onStop")
+        }
     }
 
     /**
@@ -214,8 +249,11 @@ class MainActivity : ComponentActivity() {
 
     /**
      * Callback when the system actually switches into or out of PiP mode.
-     * Writes back to AndroidLivePipState.isInPipModeState so the Compose UI can switch to a compact layout,
-     * and also synchronizes whether the PiP floating notification should be shown or dismissed.
+     *
+     * Important Clarification (Tested and Corrected): This callback will be triggered in both cases: "User presses the expand button to return to full screen" and "User presses the system button (X) to close PiP".
+     * `isInPictureInPictureMode = false` will be triggered in both cases; the system will not tell you which case it is.
+     * The main judgment is handled by `onStop()` (more direct and reliable); the delay check here is only a backup.
+     * Covers a few cases where the call order is not standard in OEM systems.
      */
     override fun onPictureInPictureModeChanged(
         isInPictureInPictureMode: Boolean,
@@ -224,6 +262,50 @@ class MainActivity : ComponentActivity() {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         AndroidLivePipState.isInPipModeState.value = isInPictureInPictureMode
         syncPipNotification()
+        if (isInPictureInPictureMode) {
+            hasEnteredPipOnce = true
+            pendingSystemPipDismiss = false
+            hasHandledPipDismiss = false
+            return
+        }
+        // false: Mark pending initially, the actual result is left to onResume() (cancel) or onStop() (confirm).
+        // The following delayed check is just a backup: in case onStop() is not triggered as expected due to system timing,
+        // a second check will be performed after 350ms.
+        if (hasEnteredPipOnce && AndroidLivePipState.canEnterPip()) {
+            pendingSystemPipDismiss = true
+            mainHandler.postDelayed({
+                if (pendingSystemPipDismiss && !isActivityResumed && AndroidLivePipState.canEnterPip()) {
+                    handleSystemPipDismiss(reason = "delayed fallback check")
+                }
+            }, 350L)
+        }
+    }
+
+    /**
+     * The user pressed the X button on the system PiP to close the small window (instead of expanding it back to full screen).
+     * This is treated as "exiting live stream viewing," following the exact same path as the "End Viewing" notification:
+     * notifyStopRequested() → LiveRoomScreen.exitLiveRoom() → onBack()
+     * → LiveRtcClassroomView.onDispose releases engine resources.
+     */
+    private fun handleSystemPipDismiss(reason: String) {
+        if (hasHandledPipDismiss) return
+        // Don't rely solely on canEnterPip() — during the system's PiP shutdown process,
+        // isLiveRoomActive/isVideoPlaying may have already been modified by other paths,
+        // As long as the engine is still running, it should be allowed to be released.
+        val hasLiveEngine = RtcEngineHolder.engine != null
+        if (!AndroidLivePipState.canEnterPip() && !hasLiveEngine) return
+        hasHandledPipDismiss = true
+        pendingSystemPipDismiss = false
+        hasEnteredPipOnce = false
+        Log.d("MainActivity", "The system PiP has been closed by the user, exiting the live stream.reason=$reason")
+        LivePipNotificationManager.cancel(applicationContext)
+        LiveBackgroundAudioService.stop(applicationContext)
+        // Key point: The Activity layer is released directly without waiting for Compose onDispose, and the sound stops immediately when X is pressed.
+        RtcEngineHolder.releaseCurrentSession(reason = "system PiP dismissed: $reason")
+        AndroidLivePipState.isInPipModeState.value = false
+        AndroidLivePipState.setLiveRoomActive(false)
+        // Reserved: Properly pop LiveRoomScreen from the navigation stack when Compose becomes visible again.
+        AndroidLivePipNotificationBridge.notifyStopRequested()
     }
 
     /**
@@ -284,6 +366,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        mainHandler.removeCallbacksAndMessages(null)
         LiveBackgroundAudioService.stop(applicationContext)
         LivePipNotificationManager.cancel(applicationContext)
         AndroidLivePipState.onStateChanged = null
