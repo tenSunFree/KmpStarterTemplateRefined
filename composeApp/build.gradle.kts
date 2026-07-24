@@ -91,6 +91,7 @@ kotlin {
             implementation(projects.features.lessons.presentation)
             // Feature Live
             implementation(projects.features.live.presentation)
+            implementation(projects.features.live.data)
         }
         iosMain.dependencies {
 

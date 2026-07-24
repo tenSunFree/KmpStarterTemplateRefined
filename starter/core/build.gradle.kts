@@ -1,18 +1,3 @@
-/*
- *
- *  *
- *  *  * Copyright (c) 2026
- *  *  *
- *  *  * Author: Athar Gul
- *  *  * GitHub: https://github.com/DevAtrii/Kmp-Starter-Template
- *  *  * YouTube: https://www.youtube.com/@devatrii/videos
- *  *  *
- *  *  * All rights reserved.
- *  *
- *  *
- *
- */
-
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kotlin.multiplatform.library)
@@ -31,10 +16,7 @@ kotlin {
         minSdk = 24
     }
 
-
     val xcfName = "starter:coreKit"
-
-
 
     iosArm64 {
         binaries.framework {
@@ -57,20 +39,23 @@ kotlin {
                 // other
                 implementation(libs.atomic.fu)
                 api(libs.datastore.preferences)
+                // network
+                implementation(libs.ktor.client.core)
+                implementation(libs.ktor.client.auth)
+                implementation(libs.ktor.client.content.negotiation)
+                implementation(libs.ktor.serialization.kotlinx.json)
+                implementation(libs.ktor.client.logging)
             }
         }
-
         androidMain {
             dependencies {
-             }
+                implementation(libs.ktor.client.okhttp)
+            }
         }
-
-
         iosMain {
             dependencies {
-
+                implementation(libs.ktor.client.darwin)
             }
         }
     }
-
 }

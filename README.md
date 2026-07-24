@@ -1,6 +1,12 @@
 # luma-lang-kmp
 
-![KMP CI](https://github.com/tenSunFree/KmpStarterTemplateRefined/actions/workflows/ci.yml/badge.svg)
+[![KMP CI](https://github.com/tenSunFree/luma-lang-kmp/actions/workflows/ci.yml/badge.svg)](https://github.com/tenSunFree/luma-lang-kmp/actions/workflows/ci.yml)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.3.10-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org)
+[![Compose Multiplatform](https://img.shields.io/badge/Compose%20Multiplatform-1.10.1-4285F4?logo=jetpackcompose&logoColor=white)](https://kotlinlang.org/compose-multiplatform)
+[![Architecture](https://img.shields.io/badge/Architecture-Clean%20%2B%20Modular-4CAF50)](#architecture)
+[![State](https://img.shields.io/badge/State-MVI%20%2B%20StateFlow-1565C0)](#architecture)
+[![DI](https://img.shields.io/badge/DI-Koin-FF7043)](https://insert-koin.io)
+[![Networking](https://img.shields.io/badge/Networking-Ktor-087CFA?logo=ktor&logoColor=white)](https://ktor.io)
 [![CodeRabbit Reviews](https://img.shields.io/badge/Code%20Review-CodeRabbit-FF6B35)](https://coderabbit.ai)
 
 ---
@@ -64,6 +70,14 @@ It can serve as the server-side foundation for authentication, user management, 
 
 ## Features
 
+### Architecture
+
+- Kotlin Multiplatform with `commonMain` shared business logic, UI foundation, and `expect`/`actual` platform contracts
+- Modular Clean Architecture: feature-isolated Gradle modules with independent data, domain, and presentation layers
+- State management with a typed `MviViewModel<STATE, ACTIONS, EVENTS>` and `StateFlow`-based immutable state transitions
+- Type-safe Navigation3 back stack with `@Serializable` NavKey routes and ResultStore for screen-to-screen results
+- Dependency injection with Koin, applied consistently across modules via reusable Gradle convention plugins
+
 ### Secure Storage
 
 - Android: Secure session storage using DataStore + Tink AEAD AES256-GCM backed by Android Keystore
@@ -123,6 +137,15 @@ It can serve as the server-side foundation for authentication, user management, 
 ---
 
 ## Environment
+
+- Kotlin: `2.3.10`
+- Compose Multiplatform: `1.10.1`
+- Ktor: `3.4.0`
+- Koin: `4.2.0-alpha3`
+- Android Gradle Plugin: `9.0.1`
+- Android compileSdk: `36`
+- Android minSdk: `24`
+- Android targetSdk: `36`
 
 ---
 

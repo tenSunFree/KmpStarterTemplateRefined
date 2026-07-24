@@ -71,20 +71,20 @@ kotlin {
         commonMain {
             dependencies {
                 implementation(libs.kotlin.stdlib)
-                implementation(projects.starter.utils)
+                implementation(projects.features.live.domain)
                 implementation(projects.features.navigation)
+                implementation(projects.starter.utils)
                 implementation(projects.starter.ui.utils)
                 implementation(projects.starter.ui.components)
+                implementation(libs.kotlinx.datetime)
             }
         }
-
         androidMain {
             kotlin.srcDir(generatedAgoraConfigDir)
             dependencies {
                 api("io.agora.rtc:full-rtc-basic:4.6.3")
             }
         }
-
         iosMain {
             dependencies {
 

@@ -68,3 +68,5 @@ include(":features:lessons:data")
 include(":features:lessons:presentation")
 /*Feature: Live*/
 include(":features:live:presentation")
+include(":features:live:domain")
+include(":features:live:data")

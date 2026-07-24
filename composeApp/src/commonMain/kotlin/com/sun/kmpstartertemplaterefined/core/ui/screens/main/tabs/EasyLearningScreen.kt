@@ -16,8 +16,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sun.kmpstartertemplaterefined.core.ui.screens.main.components.MainTopBar  // ← 新增
+import com.sun.kmpstartertemplaterefined.feature_live_presentation.LiveStreamingTab
+import com.sun.kmpstartertemplaterefined.feature_live_presentation.LiveStreamingViewModel
 import com.sun.kmpstartertemplaterefined.feature_navigation.StarterNavigator
 import com.sun.kmpstartertemplaterefined.feature_navigation.screens.StarterScreens
+import org.koin.compose.viewmodel.koinViewModel
 
 private val Pink = Color(0xFFFF3F68)
 private val BorderGray = Color(0xFFE5E5E5)
@@ -28,6 +31,7 @@ fun EasyLearningScreen() {
     val navigator = StarterNavigator.getCurrent()
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     val tabs = listOf("直播室", "FunTV", "影片", "音樂", "童話", "專欄", "大補帖")
+
     Column(modifier = Modifier.fillMaxSize()) {
         MainTopBar()
         TabRow(
@@ -36,20 +40,15 @@ fun EasyLearningScreen() {
             onTabSelected = { selectedTabIndex = it },
         )
         when (selectedTabIndex) {
-            0 -> LiveStreamingTab(
-                onOpenLiveRoom = { course ->
-                    navigator.navigateTo(
-                        StarterScreens.LiveRoom(
-                            courseId = course.id,
-                            roomId = course.roomId,
-                            teacherName = course.teacherName,
-                            title = course.title,
-                            emoji = course.emoji,
-                        )
-                    )
-                }
-            )
-
+            0 -> {
+                val viewModel: LiveStreamingViewModel = koinViewModel()
+                LiveStreamingTab(
+                    viewModel = viewModel,
+                    onOpenLiveRoom = { liveId ->
+                        navigator.navigateTo(StarterScreens.LiveRoom(liveId = liveId))
+                    },
+                )
+            }
             1 -> FunTvTab()
             2 -> VideoTab()
             3 -> MusicTab()
