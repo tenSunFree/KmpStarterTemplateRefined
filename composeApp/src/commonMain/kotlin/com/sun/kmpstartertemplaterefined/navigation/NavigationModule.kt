@@ -1,7 +1,5 @@
 package com.sun.kmpstartertemplaterefined.navigation
 
-import LiveCourseUi
-import com.sun.kmpstartertemplaterefined.feature_live_presentation.LiveRoomScreen
 import com.sun.kmpstartertemplaterefined.feature_auth_presentation.screens.LoginScreen
 import com.sun.kmpstartertemplaterefined.core.ui.screens.main.MainScreen
 import com.sun.kmpstartertemplaterefined.core.ui.screens.welcome.WelcomeScreen
@@ -15,6 +13,7 @@ import org.koin.core.annotation.KoinExperimentalAPI
 import org.koin.dsl.module
 import org.koin.dsl.navigation3.navigation
 import com.sun.kmpstartertemplaterefined.feature_lessons_presentation.screens.LessonPlayerScreen
+import com.sun.kmpstartertemplaterefined.feature_live_presentation.LiveRoomRoute
 
 @OptIn(KoinExperimentalAPI::class)
 val navigationModule = module {
@@ -82,20 +81,9 @@ val navigationModule = module {
     // LiveRoom route
     navigation<StarterScreens.LiveRoom> { route ->
         val navigator = StarterNavigator.getCurrent()
-        val course = LiveCourseUi(
-            id = route.courseId,
-            roomId = route.roomId,
-            teacherName = route.teacherName,
-            title = route.title,
-            emoji = route.emoji,
-            category = "",
-            level = "",
-            isRequired = false,
-            scheduledTime = "",
-        )
-        LiveRoomScreen(
-            course = course,
-            onBack = { navigator.navigateUp() },
+        LiveRoomRoute(
+            liveId = route.liveId,
+            onExit = { navigator.navigateUp() },
         )
     }
 }

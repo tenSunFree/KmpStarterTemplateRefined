@@ -33,6 +33,9 @@ import org.koin.dsl.module
 import com.sun.kmpstartertemplaterefined.feature_lessons_data.di.lessonsDataModule
 import com.sun.kmpstartertemplaterefined.feature_lessons_domain.di.lessonsDomainModule
 import com.sun.kmpstartertemplaterefined.feature_lessons_presentation.di.lessonsPresentationModule
+import com.sun.kmpstartertemplaterefined.feature_live_domain.di.liveDomainModule
+import com.sun.kmpstartertemplaterefined.feature_live_presentation.di.livePresentationModule
+import com.sun.kmpstartertemplaterefined.feature_live_data.di.liveDataModule
 
 private val starterModules = module {
     includes(
@@ -91,6 +94,9 @@ internal fun initKoin(
             featureYourDataModule,
             featureYourDomainModule,
             featureYourPresentationModule,
+            liveDataModule(baseUrl = authBaseUrl),   // ← 改成函式呼叫，帶 baseUrl
+            liveDomainModule,      // ← 新增
+            livePresentationModule, // ← 新增
         )
     }
 }

@@ -9,7 +9,7 @@
 ## Test Plan
 
 - [ ] Ran `./scripts/check.sh`
-- [ ] Verified basic app flow manually
+- [ ] Verified affected functionality manually
 
 ## Screenshots / Recording
 

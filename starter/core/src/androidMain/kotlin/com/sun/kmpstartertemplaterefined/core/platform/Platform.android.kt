@@ -1,25 +1,9 @@
-/*
- *
- *  *
- *  *  * Copyright (c) 2026
- *  *  *
- *  *  * Author: Athar Gul
- *  *  * GitHub: https://github.com/DevAtrii/Kmp-Starter-Template
- *  *  * YouTube: https://www.youtube.com/@devatrii/videos
- *  *  *
- *  *  * All rights reserved.
- *  *
- *  *
- *
- */
-
 package com.sun.kmpstartertemplaterefined.core.platform
 
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.os.Build
 import org.koin.mp.KoinPlatform
-
 
 actual val platform: Platform
     get() {
@@ -33,25 +17,18 @@ actual val platform: Platform
         )
     }
 
-
 private fun getAppInfo(context: Context): AppInfo {
     val applicationContext = context.applicationContext
     val packageManager = applicationContext.packageManager
     val packageInfo = packageManager.getPackageInfo(applicationContext.packageName, 0)
-
     val versionCode = if (Build.VERSION.SDK_INT >= 28) {
         packageInfo.longVersionCode.toInt()
     } else {
-        @Suppress("DEPRECATION")
-        packageInfo.versionCode
+        @Suppress("DEPRECATION") packageInfo.versionCode
     }
-
     val appName = applicationContext.applicationInfo.loadLabel(packageManager).toString()
-
     return AppInfo(
-        version = versionCode,
-        versionName = packageInfo.versionName ?: "",
-        appName = appName
+        version = versionCode, versionName = packageInfo.versionName ?: "", appName = appName
     )
 }
 
