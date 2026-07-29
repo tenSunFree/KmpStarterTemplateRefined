@@ -13,5 +13,5 @@ interface AuthRepository {
     suspend fun verifyOtp(email: String, code: String): Result<Unit>
     suspend fun getSavedSession(): UserSession?
     suspend fun refreshToken(): Result<UserSession>
-    suspend fun logout()
+    suspend fun logout(): Result<Unit>
 }

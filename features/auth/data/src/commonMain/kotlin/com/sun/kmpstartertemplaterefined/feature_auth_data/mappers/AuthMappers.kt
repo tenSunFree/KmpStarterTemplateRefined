@@ -19,7 +19,7 @@ fun RegisterParams.toDto() = RegisterRequestDto(
 )
 
 fun RegisterResponseDto.toDomain(): RegisterResult {
-    val user = data?.user ?: error("註冊成功但沒有回傳使用者資料")
+    val user = data?.user ?: throw InvalidLoginResponseException("註冊成功但沒有回傳使用者資料")
     return RegisterResult(
         userId = user.id,
         username = user.username,
@@ -31,42 +31,38 @@ fun RegisterResponseDto.toDomain(): RegisterResult {
     )
 }
 
-// reuse toUserSession() directly in toDomain() to avoid writing the validation logic twice.
-fun LoginDataDto.toDomain(): LoginResult {
-    val session = this.toUserSession()
-    return LoginResult(
-        userId = session.id,
-        username = session.username,
-        email = session.email,
-        token = session.token,
-        refreshToken = session.refreshToken,
-        fullName = session.fullName
-    )
-}
+/**
+ * Convert to a full UserSession for persistence in AuthSessionStorage.
+ * Field mapping must match UserSession exactly:
+ * id, username, fullName, email, phone, gender, roleId, token, refreshToken, createdAt, updatedAt
+ */
+fun LoginDataDto.toUserSession(): UserSession = UserSession(
+    id = id.orEmpty(),
+    username = username.orEmpty(),
+    fullName = fullName.orEmpty(),
+    email = email.orEmpty(),
+    phone = phone.orEmpty(),
+    gender = gender.orEmpty(),
+    roleId = roleId ?: 0,
+    token = requireField(token, "token"),
+    refreshToken = requireField(refreshToken, "refresh_token"),
+    createdAt = createdAt.orEmpty(),
+    updatedAt = updatedAt,
+)
 
-fun LoginDataDto.toUserSession(): UserSession {
-    val validId = requireField(id, "id")
-    val validToken = requireField(token, "token")
-    val validRefreshToken = requireField(refreshToken, "refresh_token")
+/**
+ * Compact result used by LoginLogic / LoginViewModel, converted directly
+ * from a validated UserSession to avoid duplicating token validation logic.
+ */
+fun UserSession.toLoginResult(): LoginResult = LoginResult(
+    userId = id,
+    username = username,
+    fullName = fullName,
+    email = email,
+    token = token,
+    refreshToken = refreshToken,
+)
 
-    return UserSession(
-        id = validId,
-        username = username.orEmpty(),
-        fullName = fullName.orEmpty(),
-        email = email.orEmpty(),
-        phone = phone.orEmpty(),
-        gender = gender.orEmpty(),
-        roleId = roleId ?: 0,
-        token = validToken,
-        refreshToken = validRefreshToken,
-        createdAt = createdAt.orEmpty(),
-        updatedAt = updatedAt,
-    )
-}
-
-private fun requireField(value: String?, fieldName: String): String {
-    if (value.isNullOrBlank()) {
-        throw InvalidLoginResponseException("登入回應缺少必要欄位：$fieldName")
-    }
-    return value
-}
+private fun requireField(value: String?, fieldName: String): String =
+    value?.takeIf(String::isNotBlank)
+        ?: throw InvalidLoginResponseException("登入回應缺少必要欄位：$fieldName")
