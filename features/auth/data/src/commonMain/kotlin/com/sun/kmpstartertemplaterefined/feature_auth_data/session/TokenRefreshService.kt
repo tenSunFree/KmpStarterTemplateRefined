@@ -5,10 +5,13 @@ import com.sun.kmpstartertemplaterefined.feature_auth_data.remote.dto.LoginRespo
 import com.sun.kmpstartertemplaterefined.feature_auth_data.remote.dto.RefreshTokenRequestDto
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -17,7 +20,6 @@ class TokenRefreshService(
     private val sessionStorage: AuthSessionStorage,
     private val baseUrl: String,
 ) {
-    // Prevent multiple 401s from triggering repeated refresh calls during Refresh Token Rotation.
     private val refreshMutex = Mutex()
 
     suspend fun refreshTokens(
@@ -25,20 +27,34 @@ class TokenRefreshService(
     ): RefreshedTokens? = refreshMutex.withLock {
         val currentSession = sessionStorage.getSession()
             ?: return@withLock null
-        // Another request may have already refreshed tokens; return the latest values without another API call.
         if (failedAccessToken != null && currentSession.token != failedAccessToken) {
             return@withLock RefreshedTokens(
                 accessToken = currentSession.token,
                 refreshToken = currentSession.refreshToken,
             )
         }
-        val response = runCatching {
+        val response = try {
             plainHttpClient.post("$baseUrl/auth/refresh") {
                 contentType(ContentType.Application.Json)
                 setBody(RefreshTokenRequestDto(refreshToken = currentSession.refreshToken))
             }.body<LoginResponseDto>()
-        }.getOrElse {
-            sessionStorage.clearSession()
+        } catch (e: CancellationException) {
+            // Coroutine cancellation is not a real error; it must be rethrown and never swallowed.
+            throw e
+        } catch (e: ClientRequestException) {
+            // A backend 401/403 means the refresh token is truly invalid or revoked (already used in rotation).
+            // Only in this case do we clear the session and force logout.
+            if (e.response.status == HttpStatusCode.Unauthorized ||
+                e.response.status == HttpStatusCode.Forbidden
+            ) {
+                sessionStorage.clearSession()
+            }
+            return@withLock null
+        } catch (e: Exception) {
+            // Temporary issues such as timeout, disconnect, or JSON parsing failure.
+            // Do not clear the session, so the same refresh token can be retried later.
+            // This refresh attempt fails, and the caller (Ktor Auth Plugin) treats it as refresh failure,
+            // allowing the original 401 to propagate.
             return@withLock null
         }
         if (response.status != true) {
