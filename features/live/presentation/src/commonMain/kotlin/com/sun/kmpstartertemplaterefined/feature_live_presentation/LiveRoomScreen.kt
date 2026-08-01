@@ -21,8 +21,11 @@ import com.sun.kmpstartertemplaterefined.feature_live_presentation.engine.ChatCl
 import com.sun.kmpstartertemplaterefined.feature_live_presentation.pip.isInPipMode
 import com.sun.kmpstartertemplaterefined.feature_live_presentation.rtc.LiveRtcClassroomView
 import com.sun.kmpstartertemplaterefined.feature_live_presentation.rtc.LiveRtcSession
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
@@ -53,18 +56,19 @@ fun LiveRoomScreen(
     val messages by chatClient.messages.collectAsState()
     val chatConnected by chatClient.isConnected.collectAsState()
     // Chat connection: Agora join/leave is managed inside LiveRtcClassroomView
-    DisposableEffect(current.liveId) {
-        scope.launch {
+    LaunchedEffect(current.liveId, current.chat.wsUrl, current.chat.roomId, current.chat.enabled) {
+        if (!current.chat.enabled) return@LaunchedEffect
+        try {
             runCatching {
-                if (current.chat.enabled) {
-                    chatClient.connect(current.chat.wsUrl, current.chat.roomId)
-                }
+                chatClient.connect(current.chat.wsUrl, current.chat.roomId)
             }.onFailure {
                 connectionError = "聊天室連線失敗：${it.message ?: "未知錯誤"}"
             }
-        }
-        onDispose {
-            scope.launch { runCatching { chatClient.disconnect() } }
+            awaitCancellation()
+        } finally {
+            withContext(NonCancellable) {
+                runCatching { chatClient.disconnect() }
+            }
         }
     }
     // Refresh config before token expiry (see "Known limitations" below)
@@ -78,6 +82,7 @@ fun LiveRoomScreen(
         isReconnecting = false
         if (refreshed != null) {
             current = refreshed
+            connectionError = null
         } else {
             connectionError = "Token 續期失敗，畫面可能隨時斷線"
         }
