@@ -1,4 +1,3 @@
-// features/live/presentation/src/commonMain/kotlin/.../feature_live_presentation/LiveRoomRoute.kt
 package com.sun.kmpstartertemplaterefined.feature_live_presentation
 
 import androidx.compose.foundation.layout.Box
@@ -11,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.sun.kmpstartertemplaterefined.feature_live_presentation.engine.ChatClient
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -20,18 +20,18 @@ fun LiveRoomRoute(
     onExit: () -> Unit,
 ) {
     val viewModel: LiveRoomViewModel = koinViewModel()
+    val chatClient: ChatClient = koinInject()
     val state by viewModel.state.collectAsState()
-
     LaunchedEffect(liveId) {
         viewModel.join(liveId)
     }
-
     when {
         state.isLoading -> {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
         }
+
         state.errorMessage != null -> {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -42,11 +42,11 @@ fun LiveRoomRoute(
                 }
             }
         }
+
         state.config != null -> {
             LiveRoomScreen(
                 config = state.config!!,
-                agoraEngine = koinInject(),
-                chatClient = koinInject(),
+                chatClient = chatClient,
                 onRejoin = { viewModel.rejoin(liveId) },
                 onExit = onExit,
             )
