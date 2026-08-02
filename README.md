@@ -142,6 +142,12 @@ It can serve as the server-side foundation for authentication, user management, 
   Implements expect/actual `LiveRtcVideoView` for platform-specific rendering, manages
   `RtcEngine` lifecycle with `DisposableEffect`, embeds native `SurfaceView` through
   `AndroidView`, and handles remote stream arrival via Agora callbacks to support both early-join and late-join scenarios.
+- Kover + Codecov  
+  Multi-module code coverage aggregation and reporting. Applies the Kover Gradle plugin
+  across all subprojects via a root-level aggregation module, filters out generated code
+  (Room `_Impl`, `BuildConfig`, Compose `@Preview` functions) from coverage metrics, and
+  uploads merged XML reports to Codecov on every CI run with patch-level (70%) and
+  project-level (auto, ±1%) coverage gates.
 
 ---
 
