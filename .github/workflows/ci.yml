@@ -65,6 +65,20 @@ jobs:
       - name: Run unit tests
         run: ./gradlew :androidApp:testDebugUnitTest --stacktrace
 
+      # Prefix with ':' to target the root project's aggregate task; otherwise each submodule will run it separately
+      - name: Run tests & generate coverage
+        run: ./gradlew :koverXmlReport --stacktrace --continue
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./build/reports/kover/report.xml
+          flags: unit-tests
+          name: kmp-unit-coverage
+          fail_ci_if_error: false   # Set to false for the initial phase; change to true once stable
+          verbose: true
+
       # Build Debug APK
       - name: Build Android debug APK
         run: ./gradlew :androidApp:assembleDebug --stacktrace
