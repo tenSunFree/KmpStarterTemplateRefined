@@ -115,7 +115,8 @@ It can serve as the server-side foundation for authentication, user management, 
 
 - Code coverage collected via [Kover](https://github.com/Kotlin/kotlinx-kover), aggregated at the root project across all modules
 - Coverage reports uploaded to [Codecov](https://codecov.io/gh/tenSunFree/luma-lang-kmp) on every CI run
-- Patch coverage on new code enforced at 70%; overall project coverage may not drop more than 1% per PR
+- Maintainers must configure a `CODECOV_TOKEN` repository secret (Settings → Secrets and variables → Actions) for the Codecov upload step to succeed
+- Patch coverage on new code in pull requests is enforced at 70%; overall project coverage may not drop more than 1% per PR
 - Generated code (Room `_Impl`, `BuildConfig`, Compose `@Preview` functions) excluded from coverage metrics
 - Run locally: `./gradlew :koverXmlReport` — outputs to `build/reports/kover/report.xml` and `build/reports/kover/html/index.html`
 
@@ -216,17 +217,17 @@ luma-lang-kmp/
     ├── live/                     # data / domain / presentation
     ├── purchases/                # data / domain / presentation
     ├── remote_config/            # data / domain / presentation
+    ├── your-feature/              # data / domain / presentation (template scaffold for new features)
     ├── notifications/            # core / local / push
     ├── analytics/                 # data / domain
-    ├── database/                   # Room (KSP) database module
-    ├── navigation/                  # Navigation3 routing infrastructure
+    ├── database/                   # Room (KSP) database module (single module, no layering)
+    ├── navigation/                  # Navigation3 routing infrastructure (single module, no layering)
     └── core/                        # data / domain / presentation (shared core feature)
 ```
 
-Each `features/<name>` module follows a consistent layering:
-
-- `domain` — repository contracts, use-case logic, platform-agnostic models
-- `data` — concrete implementations, remote/local data sources, DTOs
-- `presentation` — ViewModels, Compose screens, UI state
+Most features follow a `data / domain / presentation` layering. Exceptions:
+`notifications` splits into `core / local / push` instead; `analytics` only
+has `data / domain` (no presentation layer); `database` and `navigation` are
+single, unlayered modules.
 
 ---

@@ -2,13 +2,14 @@ name: KMP CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
     paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - '.gitignore'
+      - "**.md"
+      - "docs/**"
+      - ".gitignore"
+
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
 
 concurrency:
   group: kmp-ci-${{ github.ref }}
@@ -16,78 +17,71 @@ concurrency:
 
 jobs:
   ci:
-    name: Lint, Test & Build Android Debug
+    name: Lint, Test, Coverage & Build Android Debug
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout
       - name: Checkout source code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full git history so Codecov can diff against base commit
 
-      # Java 17
-      # Corresponding to JavaVersion.VERSION_17 in androidApp/build.gradle.kts
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
-      # Gradle Setup + Cache
-      # gradle/actions/setup-gradle automatically handles all caches
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # gradlew execute permissions
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
-      # Dynamically generate local.properties
-      # local.properties will not be uploaded to .gitignore
-      # CI can use the default emulator address; this is just to ensure the build runs.
       - name: Create local.properties
         run: |
           echo "AUTH_BASE_URL=http://10.0.2.2:8080/api/v1" > local.properties
           echo "AGORA_APP_ID=${{ secrets.AGORA_APP_ID }}" >> local.properties
           echo "AGORA_TOKEN=${{ secrets.AGORA_TOKEN }}" >> local.properties
 
-      # Display Gradle version (for easier debugging of CI logs)
       - name: Show Gradle version
         run: ./gradlew --version
 
-      # Android Lint
-      # Only run the lint for the Android app to avoid triggering iOS/Native tasks (Ubuntu does not have Xcode)
       - name: Run Android Lint
         run: ./gradlew :androidApp:lint --stacktrace
 
-      # Android Unit Tests
-      # Run unit tests in androidApp module only (androidApp has standard testDebugUnitTest task)
-      # composeApp uses KMP library plugin (AGP 9.x), which does not support Android unit tests yet
-      - name: Run unit tests
-        run: ./gradlew :androidApp:testDebugUnitTest --stacktrace
-
-      # Prefix with ':' to target the root project's aggregate task; otherwise each submodule will run it separately
+      # ':' prefix targets the root project's aggregate Kover task, so all
+      # modules registered via kover(...) in build.gradle.kts get merged into
+      # one report. --continue keeps one module's test failure from blocking
+      # the aggregate task, so a partial report can still be produced and
+      # uploaded via the always()/hashFiles() guard below.
       - name: Run tests & generate coverage
         run: ./gradlew :koverXmlReport --stacktrace --continue
 
+      # Runs even if the previous step failed, but only uploads when a report
+      # file actually exists. disable_search avoids picking up any stray
+      # coverage files elsewhere in the repo. fail_ci_if_error stays false for
+      # now so a transient Codecov-side issue doesn't turn an otherwise-good
+      # build red; revisit once upload reliability has been observed.
       - name: Upload coverage to Codecov
+        if: always() && hashFiles('build/reports/kover/report.xml') != ''
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./build/reports/kover/report.xml
+          disable_search: true
           flags: unit-tests
           name: kmp-unit-coverage
-          fail_ci_if_error: false   # Set to false for the initial phase; change to true once stable
+          fail_ci_if_error: false
           verbose: true
 
-      # Build Debug APK
       - name: Build Android debug APK
         run: ./gradlew :androidApp:assembleDebug --stacktrace
 
-      # Upload APK artifact
-      # Make the APK from this build available for direct download from the GitHub Actions page
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: debug-apk-${{ github.sha }}
           path: androidApp/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
           retention-days: 7
