@@ -1,6 +1,7 @@
 # luma-lang-kmp
 
 [![KMP CI](https://github.com/tenSunFree/luma-lang-kmp/actions/workflows/ci.yml/badge.svg)](https://github.com/tenSunFree/luma-lang-kmp/actions/workflows/ci.yml)
+[![Codecov](https://codecov.io/gh/tenSunFree/luma-lang-kmp/graph/badge.svg)](https://codecov.io/gh/tenSunFree/luma-lang-kmp)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3.10-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org)
 [![Compose Multiplatform](https://img.shields.io/badge/Compose%20Multiplatform-1.10.1-4285F4?logo=jetpackcompose&logoColor=white)](https://kotlinlang.org/compose-multiplatform)
 [![Architecture](https://img.shields.io/badge/Architecture-Clean%20%2B%20Modular-4CAF50)](#architecture)
@@ -110,6 +111,15 @@ It can serve as the server-side foundation for authentication, user management, 
 - Blocks the push automatically if lint, test, or build fails
 - One-time setup per clone: `cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push scripts/check.sh`
 
+### Testing & Coverage
+
+- Code coverage collected via [Kover](https://github.com/Kotlin/kotlinx-kover), aggregated at the root project across all modules
+- Coverage reports uploaded to [Codecov](https://codecov.io/gh/tenSunFree/luma-lang-kmp) on every CI run
+- Maintainers must configure a `CODECOV_TOKEN` repository secret (Settings → Secrets and variables → Actions) for the Codecov upload step to succeed
+- Patch coverage on new code in pull requests is enforced at 70%; overall project coverage may not drop more than 1% per PR
+- Generated code (Room `_Impl`, `BuildConfig`, Compose `@Preview` functions) excluded from coverage metrics
+- Run locally: `./gradlew :koverXmlReport` — outputs to `build/reports/kover/report.xml` and `build/reports/kover/html/index.html`
+
 ---
 
 ## Tech Stack
@@ -133,6 +143,12 @@ It can serve as the server-side foundation for authentication, user management, 
   Implements expect/actual `LiveRtcVideoView` for platform-specific rendering, manages
   `RtcEngine` lifecycle with `DisposableEffect`, embeds native `SurfaceView` through
   `AndroidView`, and handles remote stream arrival via Agora callbacks to support both early-join and late-join scenarios.
+- Kover + Codecov  
+  Multi-module code coverage aggregation and reporting. Applies the Kover Gradle plugin
+  across all subprojects via a root-level aggregation module, filters out generated code
+  (Room `_Impl`, `BuildConfig`, Compose `@Preview` functions) from coverage metrics, and
+  uploads merged XML reports to Codecov on every CI run with patch-level (70%) and
+  project-level (auto, ±1%) coverage gates.
 
 ---
 
@@ -183,4 +199,35 @@ If you have any concerns regarding copyright, trademark, license compliance, or 
 ## Project Structure
 
 ```
+luma-lang-kmp/
+├── androidApp/                 # Android entry point (application module)
+├── composeApp/                 # Compose Multiplatform shared UI entry point
+├── build-logic/                # Gradle convention plugins (CommonPlugin, KoinPlugin, ComposeMultiplatformPlugin, KoinComposePlugin)
+├── starter/                    # Shared foundation modules
+│   ├── core/                   # Core shared utilities and contracts
+│   ├── utils/                  # General-purpose utilities
+│   ├── native/bindings/        # Native (iOS) interop bindings
+│   ├── ui/utils/                # UI-related utilities
+│   ├── ui/components/           # Shared Compose UI components
+│   ├── ui/layouts/               # Shared Compose layouts
+│   └── resources/               # Shared multiplatform resources
+└── features/
+    ├── auth/                   # data / domain / presentation
+    ├── lessons/                 # data / domain / presentation
+    ├── live/                     # data / domain / presentation
+    ├── purchases/                # data / domain / presentation
+    ├── remote_config/            # data / domain / presentation
+    ├── your-feature/              # data / domain / presentation (template scaffold for new features)
+    ├── notifications/            # core / local / push
+    ├── analytics/                 # data / domain
+    ├── database/                   # Room (KSP) database module (single module, no layering)
+    ├── navigation/                  # Navigation3 routing infrastructure (single module, no layering)
+    └── core/                        # data / domain / presentation (shared core feature)
 ```
+
+Most features follow a `data / domain / presentation` layering. Exceptions:
+`notifications` splits into `core / local / push` instead; `analytics` only
+has `data / domain` (no presentation layer); `database` and `navigation` are
+single, unlayered modules.
+
+---
