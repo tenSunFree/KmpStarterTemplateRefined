@@ -47,8 +47,8 @@ val navigationModule = module {
         val navigator = StarterNavigator.getCurrent()
         OnboardingV1Screen(
             onNavigate = {
-                navigator.popAndNavigate(
-                    route = StarterScreens.Welcome
+                navigator.navigateTo(
+                    route = StarterScreens.Login
                 )
             }
         )
