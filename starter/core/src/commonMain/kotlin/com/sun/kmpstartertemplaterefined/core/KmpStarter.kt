@@ -1,23 +1,7 @@
-/*
- *
- *  *
- *  *  * Copyright (c) 2026
- *  *  *
- *  *  * Author: Athar Gul
- *  *  * GitHub: https://github.com/DevAtrii/Kmp-Starter-Template
- *  *  * YouTube: https://www.youtube.com/@devatrii/videos
- *  *  *
- *  *  * All rights reserved.
- *  *
- *  *
- *
- */
-
 package com.sun.kmpstartertemplaterefined.core
 
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
-
 
 data class KmpConfig(
     // keys
@@ -31,7 +15,6 @@ data class KmpConfig(
 object KmpStarter {
 
     private var isInitialized = false
-
     private lateinit var config: KmpConfig
     private val lock = SynchronizedObject()
 
@@ -63,7 +46,6 @@ object KmpStarter {
             return config.termsOfUse
         }
 
-
     fun initApp(
         // keys
         revenueCatApiKey: String,
@@ -83,8 +65,6 @@ object KmpStarter {
             isInitialized = true
         }
     }
-
-
 }
 
 
